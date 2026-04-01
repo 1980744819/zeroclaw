@@ -2,7 +2,6 @@
 
 # ── Build arguments for mirror acceleration ─────────────────────────────
 ARG NPM_REGISTRY=https://registry.npmmirror.com
-ARG CARGO_REGISTRY_INDEX=https://rsproxy.cn/crates.io-index
 ARG GOPROXY=https://goproxy.cn,direct
 ARG UBUNTU_MIRROR=http://mirrors.aliyun.com/ubuntu
 
@@ -29,7 +28,6 @@ RUN npm run build
 # ── Stage 1: Build (match runtime glibc baseline) ───────────
 FROM 192.168.1.7:30002/base/rust:1.94-bookworm AS builder
 
-ARG CARGO_REGISTRY_INDEX
 ARG NPM_REGISTRY
 
 WORKDIR /app
