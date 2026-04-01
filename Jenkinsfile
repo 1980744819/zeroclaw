@@ -33,10 +33,11 @@ pipeline {
                     "HTTPS_PROXY=${HTTPS_PROXY}",
                     "NO_PROXY=${NO_PROXY}"
                 ]) {
-                    sh '''
-                        git config --global http.proxy "${HTTP_PROXY}"
-                        git config --global https.proxy "${HTTPS_PROXY}"
-                    '''
+                    sh """
+                        git config --global http.proxy "\${HTTP_PROXY}"
+                        git config --global https.proxy "\${HTTPS_PROXY}"
+                        git config --global http.postBuffer 524288000
+                    """
                     git(
                         url: "${CODEUP_REPO_URL}",
                         branch: "${CODEUP_BRANCH}",
