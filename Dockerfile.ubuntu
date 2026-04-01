@@ -1,10 +1,17 @@
 # syntax=docker/dockerfile:1.7
 
+# ── Build arguments for mirror acceleration ─────────────────────────────
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+ARG CARGO_REGISTRY_INDEX=https://rsproxy.cn/crates.io-index
+ARG GOPROXY=https://goproxy.cn,direct
+ARG UBUNTU_MIRROR=http://mirrors.aliyun.com/ubuntu
+
 # ── Stage 0: Frontend build ─────────────────────────────────────
 FROM 192.168.1.7:30002/base/node:22-alpine AS web-builder
 WORKDIR /web
 COPY web/package.json web/package-lock.json* ./
-RUN npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts
+RUN npm config set registry ${NPM_REGISTRY} && \
+    npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts
 COPY web/ .
 RUN npm run build
 
@@ -22,8 +29,14 @@ RUN npm run build
 # ── Stage 1: Build (match runtime glibc baseline) ───────────
 FROM 192.168.1.7:30002/base/rust:1.94-bookworm AS builder
 
+ARG CARGO_REGISTRY_INDEX
+ARG NPM_REGISTRY
+
 WORKDIR /app
 ARG ZEROCLAW_CARGO_FEATURES="channel-lark,whatsapp-web"
+
+RUN mkdir -p /usr/local/cargo && \
+    printf '[source.crates-io]\nreplace-with = "rsproxy-sparse"\n\n[source.rsproxy]\nregistry = "https://rsproxy.cn/crates.io-index"\n\n[source.rsproxy-sparse]\nregistry = "sparse+https://rsproxy.cn/index/"\n\n[registries.rsproxy]\nindex = "https://rsproxy.cn/crates.io-index"\n\n[net]\ngit-fetch-with-cli = true\n' > /usr/local/cargo/config.toml
 
 # Install build dependencies
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -95,6 +108,15 @@ RUN mkdir -p /zeroclaw-data/.zeroclaw /zeroclaw-data/workspace && \
 # ── Stage 2: Runtime (Ubuntu 24.04 with development tools) ─────────────
 FROM 192.168.1.7:30002/base/ubuntu:24.04 AS runtime
 
+ARG UBUNTU_MIRROR
+ARG GOPROXY
+ARG NPM_REGISTRY
+
+RUN if [ -n "${UBUNTU_MIRROR}" ]; then \
+        sed -i "s@http://archive.ubuntu.com/ubuntu@${UBUNTU_MIRROR}@g" /etc/apt/sources.list.d/ubuntu.sources && \
+        sed -i "s@http://security.ubuntu.com/ubuntu@${UBUNTU_MIRROR}@g" /etc/apt/sources.list.d/ubuntu.sources; \
+    fi
+
 # Install essential tools for agent shell operations and development
 RUN apt-get update && apt-get install -y --no-install-recommends \
         bash \
@@ -129,6 +151,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
+RUN npm config set registry ${NPM_REGISTRY}
+
 # Install Go 1.23
 ARG GO_VERSION=1.23.4
 RUN curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz -o /tmp/go.tar.gz \
@@ -138,6 +162,7 @@ RUN curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz -o /tmp/go.t
 ENV PATH="/usr/local/go/bin:${PATH}"
 ENV GOPATH="/go"
 ENV PATH="${GOPATH}/bin:${PATH}"
+ENV GOPROXY="${GOPROXY}"
 RUN mkdir -p "${GOPATH}"
 
 COPY --from=builder /app/zeroclaw /usr/local/bin/zeroclaw
