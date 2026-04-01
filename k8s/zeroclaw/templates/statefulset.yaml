@@ -146,24 +146,28 @@ spec:
         - sh
         - /scripts/init-config.sh
         env:
+{{- if and .Values.telegram.secretRef .Values.telegram.instances }}
 {{- range $index, $instance := .Values.telegram.instances }}
+{{- if $.Values.telegram.secretRef.name }}
         - name: BOT_TOKEN_{{ $index }}
           valueFrom:
             secretKeyRef:
-              name: zeroclaw-telegram-secrets
+              name: {{ $.Values.telegram.secretRef.name }}
               key: bot_token_{{ $index }}
         - name: ALLOWED_USERS_{{ $index }}
           valueFrom:
             secretKeyRef:
-              name: zeroclaw-telegram-secrets
+              name: {{ $.Values.telegram.secretRef.name }}
               key: allowed_users_{{ $index }}
 {{- end }}
-{{- if .Values.model.apiKey }}
+{{- end }}
+{{- end }}
+{{- if and .Values.model.secretRef .Values.model.secretRef.name }}
         - name: API_KEY
           valueFrom:
             secretKeyRef:
-              name: zeroclaw-secrets
-              key: api_key
+              name: {{ .Values.model.secretRef.name }}
+              key: {{ .Values.model.secretRef.key }}
 {{- end }}
         volumeMounts:
         - name: data

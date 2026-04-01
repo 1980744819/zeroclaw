@@ -49,19 +49,17 @@ model:
   provider: bailian
   model: glm-5
   temperature: 0.7
-  apiKey: ""  # Set via ZEROCLAW_API_KEY env var or k8s secret
+  secretRef:
+    name: zeroclaw-secrets
+    key: api_key
 
 telegram:
   mentionOnly: false
+  secretRef:
+    name: zeroclaw-telegram-secrets
   instances:
-    - botToken: ""  # Set via telegram-secrets secret
-      allowedUsers:
-        - "YOUR_TELEGRAM_USER_ID"
-      nodePort: 32617
-    - botToken: ""  # Set via telegram-secrets secret
-      allowedUsers:
-        - "YOUR_TELEGRAM_USER_ID"
-      nodePort: 32618
+    - nodePort: 32617
+    - nodePort: 32618
 
 security:
   privileged: true
