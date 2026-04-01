@@ -18,7 +18,8 @@ pipeline {
 
         REPO_ADDR = "192.168.1.7:30002"
         PROJECT = "zeroclaw"
-        IMAGE_REPO = "${REPO_ADDR}/${PROJECT}"
+        IMAGE_NAME = "zeroclaw"
+        IMAGE_REPO = "${REPO_ADDR}/${PROJECT}/${IMAGE_NAME}"
         NAMESPACE = "prod"
         GIT_CREDENTIAL_ID = "credential_github"
         HARBOR_CREDENTIAL_ID = "credential_harbor_admin"
