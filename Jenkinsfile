@@ -9,7 +9,7 @@ pipeline {
     }
 
     environment {
-        CODEUP_REPO_URL = "https://ghfast.top/https://github.com/openagen/zeroclaw.git"
+        CODEUP_REPO_URL = "https://ghfast.top/https://github.com/1980744819/zeroclaw.git"
         CODEUP_BRANCH = "dev"
 
         REPO_ADDR = "192.168.1.7:30002"
