@@ -45,6 +45,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 # 1. Copy manifests to cache dependencies
 COPY Cargo.toml Cargo.lock ./
+COPY .cargo/ .cargo/
 COPY crates/robot-kit/ crates/robot-kit/
 COPY crates/aardvark-sys/ crates/aardvark-sys/
 COPY apps/tauri/ apps/tauri/
@@ -54,11 +55,8 @@ COPY src/ src/
 COPY benches/ benches/
 COPY --from=web-builder /web/dist web/dist
 
-# Build with all features
-RUN --mount=type=cache,id=zeroclaw-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,id=zeroclaw-cargo-git,target=/usr/local/cargo/git,sharing=locked \
-    --mount=type=cache,id=zeroclaw-target,target=/app/target,sharing=locked \
-    CARGO_INCREMENTAL=0 cargo build --release --features "$ZEROCLAW_CARGO_FEATURES" && \
+# Build with all features (no cache mounts to avoid stale cache issues)
+RUN CARGO_TERM_COLOR=always CARGO_INCREMENTAL=0 cargo build --release --features "$ZEROCLAW_CARGO_FEATURES" && \
     cp target/release/zeroclaw /app/zeroclaw && \
     strip /app/zeroclaw
 RUN size=$(stat -c%s /app/zeroclaw) && \
