@@ -10,7 +10,7 @@ pipeline {
 
     environment {
         CODEUP_REPO_URL = "https://github.com/zeroclaw-labs/zeroclaw.git"
-        CODEUP_BRANCH = "main"
+        CODEUP_BRANCH = "dev"
 
         REPO_ADDR = "192.168.1.7:30002"
         PROJECT = "zeroclaw"
