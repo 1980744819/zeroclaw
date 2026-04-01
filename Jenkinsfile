@@ -12,6 +12,10 @@ pipeline {
         CODEUP_REPO_URL = "https://github.com/1980744819/zeroclaw.git"
         CODEUP_BRANCH = "dev"
 
+        HTTP_PROXY = "http://192.168.1.7:7890"
+        HTTPS_PROXY = "http://192.168.1.7:7890"
+        NO_PROXY = "localhost,127.0.0.1,192.168.1.7,.local,.cluster.local,.svc,kubernetes.default"
+
         REPO_ADDR = "192.168.1.7:30002"
         PROJECT = "zeroclaw"
         IMAGE_REPO = "${REPO_ADDR}/${PROJECT}"
@@ -24,23 +28,33 @@ pipeline {
         stage('Pull Code') {
             steps {
                 echo "开始拉取仓库 ${CODEUP_REPO_URL} 分支 ${CODEUP_BRANCH}..."
-                git(
-                    url: "${CODEUP_REPO_URL}",
-                    branch: "${CODEUP_BRANCH}",
-                    credentialsId: "${GIT_CREDENTIAL_ID}",
-                    changelog: false,
-                    poll: false
-                )
-                script {
-                    if (!env.GIT_COMMIT || env.GIT_COMMIT == 'null') {
-                        env.GIT_COMMIT = sh(returnStdout: true, script: "git rev-parse HEAD").trim()
+                withEnv([
+                    "HTTP_PROXY=${HTTP_PROXY}",
+                    "HTTPS_PROXY=${HTTPS_PROXY}",
+                    "NO_PROXY=${NO_PROXY}"
+                ]) {
+                    sh '''
+                        git config --global http.proxy "${HTTP_PROXY}"
+                        git config --global https.proxy "${HTTPS_PROXY}"
+                    '''
+                    git(
+                        url: "${CODEUP_REPO_URL}",
+                        branch: "${CODEUP_BRANCH}",
+                        credentialsId: "${GIT_CREDENTIAL_ID}",
+                        changelog: false,
+                        poll: false
+                    )
+                    script {
+                        if (!env.GIT_COMMIT || env.GIT_COMMIT == 'null') {
+                            env.GIT_COMMIT = sh(returnStdout: true, script: "git rev-parse HEAD").trim()
+                        }
+                        env.GIT_SHORT = sh(returnStdout: true, script: "git rev-parse --short HEAD").trim()
+                        env.IMAGE_TAG = "${env.GIT_SHORT}"
+                        env.FULL_IMAGE_NAME = "${IMAGE_REPO}:${IMAGE_TAG}"
+                        echo "Commit: ${env.GIT_COMMIT}, Short: ${env.GIT_SHORT}"
+                        echo "镜像标签：${IMAGE_TAG}"
+                        echo "完整镜像名：${FULL_IMAGE_NAME}"
                     }
-                    env.GIT_SHORT = sh(returnStdout: true, script: "git rev-parse --short HEAD").trim()
-                    env.IMAGE_TAG = "${env.GIT_SHORT}"
-                    env.FULL_IMAGE_NAME = "${IMAGE_REPO}:${IMAGE_TAG}"
-                    echo "Commit: ${env.GIT_COMMIT}, Short: ${env.GIT_SHORT}"
-                    echo "镜像标签：${IMAGE_TAG}"
-                    echo "完整镜像名：${FULL_IMAGE_NAME}"
                 }
                 echo "代码拉取完成！"
             }
