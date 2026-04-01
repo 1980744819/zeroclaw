@@ -1,0 +1,74 @@
+replicas: 2
+
+image:
+  repository: 192.168.1.7:30002/base/zeroclaw
+  tag: "v0.6.5-debian"
+  pullPolicy: IfNotPresent
+
+service:
+  type: NodePort
+
+storage:
+  className: local-storage-nvme
+  size: 40Gi
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+autonomy:
+  level: full
+  workspaceOnly: false
+  allowedCommands:
+    - "*"
+  forbiddenPaths: []
+  maxActionsPerHour: 10000
+  maxCostPerDayCents: 100000
+  requireApprovalForMediumRisk: false
+  blockHighRiskCommands: false
+  allowShellVariableExpansion: true
+  autoApprove:
+    - "*"
+  alwaysAsk: []
+  allowedRoots:
+    - "/"
+  shellTimeoutSecs: 600
+
+gateway:
+  port: 42617
+  host: "[::]"
+  allowPublicBind: true
+  requirePairing: false
+  proxyUrl: "http://192.168.1.7:7890"
+
+model:
+  provider: bailian
+  model: glm-5
+  temperature: 0.7
+  apiKey: "" # Set via ZEROCLAW_API_KEY env var or k8s secret
+
+telegram:
+  mentionOnly: false
+  instances:
+    - botToken: "" # Set via telegram-secrets secret
+      allowedUsers:
+        - "5310487319"
+      nodePort: 32617
+    - botToken: "" # Set via telegram-secrets secret
+      allowedUsers:
+        - "5310487319"
+      nodePort: 32618
+
+security:
+  privileged: true
+  runAsUser: 0
+  runAsGroup: 0
+  fsGroup: 65534
+
+rbac:
+  create: true
+  clusterAdmin: false

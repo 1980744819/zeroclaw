@@ -1,0 +1,11 @@
+apiVersion: v2
+name: zeroclaw
+description: A Helm chart for ZeroClaw - Autonomous Agent Runtime
+type: application
+version: 0.1.0
+appVersion: "0.6.5"
+keywords:
+  - zeroclaw
+  - agent
+  - telegram
+  - ai

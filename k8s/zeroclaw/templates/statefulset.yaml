@@ -1,0 +1,281 @@
+{{- /*
+Generate namespace, service account, secret, configmap, statefulset, service, and rbac
+*/ -}}
+{{- $fullName := include "zeroclaw.fullname" . -}}
+{{- $telegramCount := len .Values.telegram.instances -}}
+{{- $serviceType := .Values.service.type -}}
+{{- $releaseNamespace := .Release.Namespace | default "prod" -}}
+{{- $root := . -}}
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $fullName }}
+  namespace: {{ $releaseNamespace }}
+{{- if .Values.rbac.create }}
+{{- $roleName := "" -}}
+{{- if .Values.rbac.clusterAdmin }}
+{{- $roleName = "cluster-admin" -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $fullName }}-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $roleName }}
+subjects:
+- kind: ServiceAccount
+  name: {{ $fullName }}
+  namespace: {{ $releaseNamespace }}
+---
+{{- else }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $fullName }}-admin
+  namespace: {{ $releaseNamespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin
+subjects:
+- kind: ServiceAccount
+  name: {{ $fullName }}
+  namespace: {{ $releaseNamespace }}
+{{- end }}
+{{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullName }}-config-template
+  namespace: {{ $releaseNamespace }}
+data:
+  config.toml: |
+    api_key = "PLACEHOLDER_API_KEY"
+    default_provider = "{{ .Values.model.provider }}"
+    default_model = "{{ .Values.model.model }}"
+    default_temperature = {{ .Values.model.temperature }}
+    {{- if .Values.model.baseUrl }}
+    api_url = "{{ .Values.model.baseUrl }}"
+    {{- end }}
+
+    [gateway]
+    port = {{ .Values.gateway.port }}
+    host = "{{ .Values.gateway.host }}"
+    allow_public_bind = {{ .Values.gateway.allowPublicBind }}
+    require_pairing = {{ .Values.gateway.requirePairing }}
+
+    [autonomy]
+    level = "{{ .Values.autonomy.level }}"
+    workspace_only = {{ .Values.autonomy.workspaceOnly | default false }}
+    allowed_commands = [{{- range $i, $v := .Values.autonomy.allowedCommands }}{{ if $i }}, {{ end }}"{{ $v }}"{{- end }}]
+    forbidden_paths = [{{- range $i, $v := .Values.autonomy.forbiddenPaths }}{{ if $i }}, {{ end }}"{{ $v }}"{{- end }}]
+    max_actions_per_hour = {{ .Values.autonomy.maxActionsPerHour | default 100 }}
+    max_cost_per_day_cents = {{ .Values.autonomy.maxCostPerDayCents | default 1000 }}
+    require_approval_for_medium_risk = {{ .Values.autonomy.requireApprovalForMediumRisk | default false }}
+    block_high_risk_commands = {{ .Values.autonomy.blockHighRiskCommands | default false }}
+    auto_approve = [{{- range $i, $v := .Values.autonomy.autoApprove }}{{ if $i }}, {{ end }}"{{ $v }}"{{- end }}]
+    always_ask = [{{- range $i, $v := .Values.autonomy.alwaysAsk }}{{ if $i }}, {{ end }}"{{ $v }}"{{- end }}]
+    allowed_roots = [{{- range $i, $v := .Values.autonomy.allowedRoots }}{{ if $i }}, {{ end }}"{{ $v }}"{{- end }}]
+    shell_timeout_secs = {{ .Values.autonomy.shellTimeoutSecs | default 60 }}
+
+    [channels_config.telegram]
+    bot_token = "PLACEHOLDER_BOT_TOKEN"
+    allowed_users = ["PLACEHOLDER_ALLOWED_USERS"]
+    stream_mode = "partial"
+    interrupt_on_new_message = true
+    mention_only = {{ .Values.telegram.mentionOnly | default false }}
+    {{- if .Values.gateway.proxyUrl }}
+    proxy_url = "{{ .Values.gateway.proxyUrl }}"
+    {{- end }}
+  init-config.sh: |
+    #!/bin/sh
+    set -e
+    
+    POD_ORDINAL=$(hostname | sed 's/.*-//')
+    echo "Initializing config for pod ordinal: ${POD_ORDINAL}"
+    
+    mkdir -p /zeroclaw-data/.zeroclaw
+    mkdir -p /zeroclaw-data/workspace
+    
+    eval "BOT_TOKEN=\$BOT_TOKEN_${POD_ORDINAL}"
+    eval "ALLOWED_USERS=\$ALLOWED_USERS_${POD_ORDINAL}"
+    
+    if [ -z "$BOT_TOKEN" ]; then
+      echo "Error: BOT_TOKEN_${POD_ORDINAL} not set"
+      exit 1
+    fi
+    
+    sed -e "s/PLACEHOLDER_BOT_TOKEN/${BOT_TOKEN}/g" \
+        -e "s/PLACEHOLDER_ALLOWED_USERS/${ALLOWED_USERS}/g" \
+        -e "s/PLACEHOLDER_API_KEY/${API_KEY}/g" \
+        /template/config.toml > /zeroclaw-data/.zeroclaw/config.toml
+    
+    echo "Config initialized for instance ${POD_ORDINAL}"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $fullName }}
+  namespace: {{ $releaseNamespace }}
+  labels:
+    {{- include "zeroclaw.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ $fullName }}
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      {{- include "zeroclaw.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "zeroclaw.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/values: {{ toJson .Values | sha256sum }}
+    spec:
+      serviceAccountName: {{ $fullName }}
+      securityContext:
+        fsGroup: {{ .Values.security.fsGroup }}
+      initContainers:
+      - name: init-config
+        image: busybox:1.36
+        command:
+        - sh
+        - /scripts/init-config.sh
+        env:
+{{- range $index, $instance := .Values.telegram.instances }}
+        - name: BOT_TOKEN_{{ $index }}
+          valueFrom:
+            secretKeyRef:
+              name: zeroclaw-telegram-secrets
+              key: bot_token_{{ $index }}
+        - name: ALLOWED_USERS_{{ $index }}
+          valueFrom:
+            secretKeyRef:
+              name: zeroclaw-telegram-secrets
+              key: allowed_users_{{ $index }}
+{{- end }}
+{{- if .Values.model.apiKey }}
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: zeroclaw-secrets
+              key: api_key
+{{- end }}
+        volumeMounts:
+        - name: data
+          mountPath: /zeroclaw-data
+        - name: config-template
+          mountPath: /template
+          readOnly: true
+        - name: init-script
+          mountPath: /scripts
+          readOnly: true
+      containers:
+      - name: {{ .Chart.Name }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+        - zeroclaw
+        args:
+        - daemon
+        env:
+        - name: RUST_LOG
+          value: "info"
+        - name: ZEROCLAW_WORKSPACE
+          value: "/zeroclaw-data/workspace"
+        - name: HOME
+          value: "/zeroclaw-data"
+        {{- if .Values.security.privileged }}
+        securityContext:
+          runAsUser: {{ .Values.security.runAsUser }}
+          runAsGroup: {{ .Values.security.runAsGroup }}
+          capabilities:
+            add:
+            - ALL
+          privileged: true
+        {{- end }}
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+        volumeMounts:
+        - name: data
+          mountPath: /zeroclaw-data
+        livenessProbe:
+          tcpSocket:
+            port: {{ .Values.gateway.port }}
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          tcpSocket:
+            port: {{ .Values.gateway.port }}
+          initialDelaySeconds: 10
+          periodSeconds: 10
+      volumes:
+      - name: config-template
+        configMap:
+          name: {{ $fullName }}-config-template
+      - name: init-script
+        configMap:
+          name: {{ $fullName }}-config-template
+          items:
+          - key: init-config.sh
+            path: init-config.sh
+            mode: 0755
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: {{ .Values.storage.className }}
+      resources:
+        requests:
+          storage: {{ .Values.storage.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullName }}
+  namespace: {{ $releaseNamespace }}
+  labels:
+    {{- include "zeroclaw.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    {{- include "zeroclaw.selectorLabels" . | nindent 4 }}
+  ports:
+  - name: gateway
+    port: {{ .Values.gateway.port }}
+    targetPort: {{ .Values.gateway.port }}
+{{- range $index, $instance := .Values.telegram.instances }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullName }}-{{ $index }}
+  namespace: {{ $releaseNamespace }}
+  labels:
+    helm.sh/chart: {{ include "zeroclaw.chart" $root | quote }}
+    app.kubernetes.io/name: {{ include "zeroclaw.name" $root | quote }}
+    app.kubernetes.io/instance: {{ $root.Release.Name | quote }}
+    {{- if $root.Chart.AppVersion }}
+    app.kubernetes.io/version: {{ $root.Chart.AppVersion | quote }}
+    {{- end }}
+    app.kubernetes.io/managed-by: {{ $root.Release.Service | quote }}
+spec:
+  type: {{ $serviceType }}
+  selector:
+    app.kubernetes.io/name: {{ include "zeroclaw.name" $root | quote }}
+    app.kubernetes.io/instance: {{ $root.Release.Name | quote }}
+    statefulset.kubernetes.io/pod-name: {{ $fullName }}-{{ $index }}
+  ports:
+  - name: gateway
+    port: {{ $root.Values.gateway.port }}
+    targetPort: {{ $root.Values.gateway.port }}
+    {{- if $instance.nodePort }}
+    nodePort: {{ $instance.nodePort }}
+    {{- end }}
+{{- end }}
