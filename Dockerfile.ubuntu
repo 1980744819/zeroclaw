@@ -12,7 +12,7 @@ COPY web/package.json web/package-lock.json* ./
 RUN npm config set registry ${NPM_REGISTRY} && \
     npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts
 COPY web/ .
-RUN npm run build
+RUN npm rebuild esbuild && npm run build
 
 # Dockerfile.ubuntu — Ubuntu 24.04 variant of the ZeroClaw container.
 #
