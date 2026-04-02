@@ -109,16 +109,22 @@ pipeline {
         stage('Helm Deploy') {
             steps {
                 container('helm') {
-                    sh '''
-                    set -euo pipefail
+                    withEnv([
+                        "HTTP_PROXY=",
+                        "HTTPS_PROXY=",
+                        "NO_PROXY=*"
+                    ]) {
+                        sh '''
+                        set -euo pipefail
 
-                    echo "开始部署应用到 Kubernetes..."
-                    helm upgrade --install zeroclaw ./k8s/zeroclaw \
-                        --namespace ${NAMESPACE} --create-namespace \
-                        --set image.repository=${IMAGE_REPO} \
-                        --set image.tag=${IMAGE_TAG}
-                    echo "应用部署完成！"
-                    '''
+                        echo "开始部署应用到 Kubernetes..."
+                        helm upgrade --install zeroclaw ./k8s/zeroclaw \
+                            --namespace ${NAMESPACE} --create-namespace \
+                            --set image.repository=${IMAGE_REPO} \
+                            --set image.tag=${IMAGE_TAG}
+                        echo "应用部署完成！"
+                        '''
+                    }
                 }
             }
         }
