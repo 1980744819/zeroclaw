@@ -2411,7 +2411,8 @@ impl Channel for TelegramChannel {
         }
 
         // Truncate to Telegram limit for mid-stream edits (UTF-8 safe)
-        let display_text = if text.len() > TELEGRAM_MAX_MESSAGE_LENGTH {
+        // Use chars().count() for character-based comparison (handles multi-byte chars like CJK)
+        let display_text = if text.chars().count() > TELEGRAM_MAX_MESSAGE_LENGTH {
             let mut end = 0;
             for (idx, ch) in text.char_indices() {
                 let next = idx + ch.len_utf8();
@@ -2515,7 +2516,8 @@ impl Channel for TelegramChannel {
         }
 
         // If text exceeds limit, delete draft and send as chunked messages
-        if text.len() > TELEGRAM_MAX_MESSAGE_LENGTH {
+        // Use chars().count() for character-based comparison (handles multi-byte chars like CJK)
+        if text.chars().count() > TELEGRAM_MAX_MESSAGE_LENGTH {
             if let Some(id) = msg_id {
                 let _ = self
                     .client
@@ -2541,28 +2543,40 @@ impl Channel for TelegramChannel {
         };
 
         // Try editing with HTML formatting
-        let body = serde_json::json!({
-            "chat_id": chat_id,
-            "message_id": id,
-            "text": Self::markdown_to_telegram_html(text),
-            "parse_mode": "HTML",
-        });
+        // Note: markdown_to_telegram_html can expand text significantly due to added tags
+        // (e.g., **bold** → <b>bold</b>), so we must check length before sending.
+        let html_text = Self::markdown_to_telegram_html(text);
+        let can_use_html = html_text.chars().count() <= TELEGRAM_MAX_MESSAGE_LENGTH;
 
-        let resp = self
-            .client
-            .post(self.api_url("editMessageText"))
-            .json(&body)
-            .send()
-            .await?;
+        if can_use_html {
+            let body = serde_json::json!({
+                "chat_id": chat_id,
+                "message_id": id,
+                "text": html_text,
+                "parse_mode": "HTML",
+            });
 
-        match Self::classify_edit_message_response(resp).await {
-            EditMessageResult::Success | EditMessageResult::NotModified => return Ok(()),
-            EditMessageResult::Failed(status) => {
-                tracing::debug!(
-                    status = ?status,
-                    "Telegram finalize_draft HTML edit failed; retrying without parse_mode"
-                );
+            let resp = self
+                .client
+                .post(self.api_url("editMessageText"))
+                .json(&body)
+                .send()
+                .await?;
+
+            match Self::classify_edit_message_response(resp).await {
+                EditMessageResult::Success | EditMessageResult::NotModified => return Ok(()),
+                EditMessageResult::Failed(status) => {
+                    tracing::debug!(
+                        status = ?status,
+                        "Telegram finalize_draft HTML edit failed; retrying without parse_mode"
+                    );
+                }
             }
+        } else {
+            tracing::debug!(
+                "Telegram finalize_draft HTML text ({} chars) exceeds limit; skipping HTML mode",
+                html_text.chars().count()
+            );
         }
 
         // HTML failed — retry without parse_mode
