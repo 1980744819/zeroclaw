@@ -59,5 +59,4 @@ playground/
 # Temporary rustc output
 rust_out
 
-secrets.yaml
 tmp/
