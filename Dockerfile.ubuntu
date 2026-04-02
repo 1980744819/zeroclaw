@@ -50,12 +50,15 @@ COPY crates/robot-kit/ crates/robot-kit/
 COPY crates/aardvark-sys/ crates/aardvark-sys/
 COPY apps/tauri/ apps/tauri/
 
+# Pre-build dependencies only (this layer will be cached unless Cargo.toml changes)
+RUN CARGO_TERM_COLOR=always CARGO_INCREMENTAL=0 cargo build --release --features "$ZEROCLAW_CARGO_FEATURES" --lib
+
 # 2. Copy source code
 COPY src/ src/
 COPY benches/ benches/
 COPY --from=web-builder /web/dist web/dist
 
-# Build with all features (no cache mounts to avoid stale cache issues)
+# Build final binary (dependencies are cached, only source changes trigger rebuild)
 RUN CARGO_TERM_COLOR=always CARGO_INCREMENTAL=0 cargo build --release --features "$ZEROCLAW_CARGO_FEATURES" && \
     cp target/release/zeroclaw /app/zeroclaw && \
     strip /app/zeroclaw
