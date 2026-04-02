@@ -1,9 +1,12 @@
 replicas: 2
 
 image:
-  repository: 192.168.1.7:30002/base/zeroclaw
-  tag: "v0.6.5-debian"
+  repository: 192.168.1.7:30002/zeroclaw/zeroclaw
+  tag: "273f0273"
   pullPolicy: IfNotPresent
+
+secrets:
+  create: false
 
 service:
   type: NodePort
