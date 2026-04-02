@@ -51,7 +51,7 @@ COPY crates/aardvark-sys/ crates/aardvark-sys/
 COPY apps/tauri/ apps/tauri/
 
 # Pre-build dependencies only (this layer will be cached unless Cargo.toml changes)
-RUN CARGO_TERM_COLOR=always CARGO_INCREMENTAL=0 cargo build --release --features "$ZEROCLAW_CARGO_FEATURES" --lib
+# RUN CARGO_TERM_COLOR=always CARGO_INCREMENTAL=0 cargo build --release --features "$ZEROCLAW_CARGO_FEATURES" --lib
 
 # 2. Copy source code
 COPY src/ src/
