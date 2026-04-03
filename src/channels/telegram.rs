@@ -1718,6 +1718,25 @@ Allowlist Telegram username (without '@') or numeric user ID.",
         chat_id: &str,
         thread_id: Option<&str>,
     ) -> anyhow::Result<()> {
+        let message_len = message.chars().count();
+        if message_len > TELEGRAM_MAX_MESSAGE_LENGTH * 2 {
+            tracing::debug!(
+                "Telegram: message length {} exceeds 2x limit, sending as document",
+                message_len
+            );
+            let file_name = format!(
+                "message_{}.txt",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0)
+            );
+            let file_bytes = message.as_bytes().to_vec();
+            self.send_document_bytes(chat_id, thread_id, file_bytes, &file_name, None)
+                .await?;
+            return Ok(());
+        }
+
         let chunks = split_message_for_telegram(message);
 
         for (index, chunk) in chunks.iter().enumerate() {
@@ -2397,9 +2416,8 @@ impl Channel for TelegramChannel {
         message_id: &str,
         text: &str,
     ) -> anyhow::Result<()> {
-        let (chat_id, _) = Self::parse_reply_target(recipient);
+        let (chat_id, _thread_id) = Self::parse_reply_target(recipient);
 
-        // Rate-limit edits per chat
         {
             let last_edits = self.last_draft_edit.lock();
             if let Some(last_time) = last_edits.get(&chat_id) {
@@ -2410,21 +2428,25 @@ impl Channel for TelegramChannel {
             }
         }
 
-        // Truncate to Telegram limit for mid-stream edits (UTF-8 safe)
-        // Use chars().count() for character-based comparison (handles multi-byte chars like CJK)
-        let display_text = if text.chars().count() > TELEGRAM_MAX_MESSAGE_LENGTH {
-            let mut end = 0;
-            for (idx, ch) in text.char_indices() {
-                let next = idx + ch.len_utf8();
-                if next > TELEGRAM_MAX_MESSAGE_LENGTH {
-                    break;
+        if text.chars().count() > TELEGRAM_MAX_MESSAGE_LENGTH {
+            let message_id_parsed = match message_id.parse::<i64>() {
+                Ok(id) => id,
+                Err(e) => {
+                    tracing::warn!("Invalid Telegram message_id '{message_id}': {e}");
+                    return Ok(());
                 }
-                end = next;
-            }
-            &text[..end]
-        } else {
-            text
-        };
+            };
+            let _ = self
+                .client
+                .post(self.api_url("deleteMessage"))
+                .json(&serde_json::json!({
+                    "chat_id": chat_id,
+                    "message_id": message_id_parsed,
+                }))
+                .send()
+                .await;
+            return Ok(());
+        }
 
         let message_id_parsed = match message_id.parse::<i64>() {
             Ok(id) => id,
@@ -2437,7 +2459,7 @@ impl Channel for TelegramChannel {
         let body = serde_json::json!({
             "chat_id": chat_id,
             "message_id": message_id_parsed,
-            "text": display_text,
+            "text": text,
         });
 
         let resp = self
