@@ -167,6 +167,31 @@ fn is_image_extension(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// Get MIME type from file extension
+fn mime_from_extension(ext: &str) -> Option<&'static str> {
+    let ext_lower = ext.to_ascii_lowercase();
+    match ext_lower.as_str() {
+        "txt" => Some("text/plain"),
+        "html" | "htm" => Some("text/html"),
+        "css" => Some("text/css"),
+        "js" => Some("application/javascript"),
+        "json" => Some("application/json"),
+        "xml" => Some("application/xml"),
+        "pdf" => Some("application/pdf"),
+        "zip" => Some("application/zip"),
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "bmp" => Some("image/bmp"),
+        "mp3" => Some("audio/mpeg"),
+        "wav" => Some("audio/wav"),
+        "mp4" => Some("video/mp4"),
+        "webm" => Some("video/webm"),
+        _ => None,
+    }
+}
+
 /// Build the user-facing content string for an incoming attachment.
 ///
 /// Photos with a recognized image extension use `[IMAGE:/path]` so the
@@ -1718,25 +1743,6 @@ Allowlist Telegram username (without '@') or numeric user ID.",
         chat_id: &str,
         thread_id: Option<&str>,
     ) -> anyhow::Result<()> {
-        let message_len = message.chars().count();
-        if message_len > TELEGRAM_MAX_MESSAGE_LENGTH * 2 {
-            tracing::debug!(
-                "Telegram: message length {} exceeds 2x limit, sending as document",
-                message_len
-            );
-            let file_name = format!(
-                "message_{}.txt",
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0)
-            );
-            let file_bytes = message.as_bytes().to_vec();
-            self.send_document_bytes(chat_id, thread_id, file_bytes, &file_name, None)
-                .await?;
-            return Ok(());
-        }
-
         let chunks = split_message_for_telegram(message);
 
         for (index, chunk) in chunks.iter().enumerate() {
@@ -1998,7 +2004,13 @@ Allowlist Telegram username (without '@') or numeric user ID.",
         file_name: &str,
         caption: Option<&str>,
     ) -> anyhow::Result<()> {
-        let part = Part::bytes(file_bytes).file_name(file_name.to_string());
+        let mut part = Part::bytes(file_bytes).file_name(file_name.to_string());
+
+        if let Some(ext) = Path::new(file_name).extension().and_then(|e| e.to_str()) {
+            if let Some(mime) = mime_from_extension(ext) {
+                part = part.mime_str(mime)?;
+            }
+        }
 
         let mut form = Form::new()
             .text("chat_id", chat_id.to_string())
