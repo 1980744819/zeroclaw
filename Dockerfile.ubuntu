@@ -4,6 +4,10 @@
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 ARG GOPROXY=https://goproxy.cn,direct
 ARG UBUNTU_MIRROR=http://mirrors.aliyun.com/ubuntu
+ARG HTTP_PROXY=http://192.168.1.7:7890
+ARG HTTPS_PROXY=http://192.168.1.7:7890
+ARG http_proxy=http://192.168.1.7:7890
+ARG https_proxy=http://192.168.1.7:7890
 
 # ── Stage 0: Frontend build ─────────────────────────────────────
 FROM 192.168.1.7:30002/base/node:22-alpine AS web-builder
@@ -156,6 +160,13 @@ ENV HOME=/zeroclaw-data
 # Default provider and model are set in config.toml, not here,
 # so config file edits are not silently overridden
 ENV ZEROCLAW_GATEWAY_PORT=42617
+
+# Proxy configuration
+ENV HTTP_PROXY=http://192.168.1.7:7890
+ENV HTTPS_PROXY=http://192.168.1.7:7890
+ENV http_proxy=http://192.168.1.7:7890
+ENV https_proxy=http://192.168.1.7:7890
+ENV no_proxy=localhost,127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.cluster.local,.svc,k3s,k3s.local
 
 # API_KEY must be provided at runtime!
 
