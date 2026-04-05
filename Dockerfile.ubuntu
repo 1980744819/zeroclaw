@@ -4,10 +4,6 @@
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 ARG GOPROXY=https://goproxy.cn,direct
 ARG UBUNTU_MIRROR=http://mirrors.aliyun.com/ubuntu
-ARG HTTP_PROXY=http://192.168.1.7:7890
-ARG HTTPS_PROXY=http://192.168.1.7:7890
-ARG http_proxy=http://192.168.1.7:7890
-ARG https_proxy=http://192.168.1.7:7890
 
 # ── Stage 0: Frontend build ─────────────────────────────────────
 FROM 192.168.1.7:30002/base/node:22-alpine AS web-builder
